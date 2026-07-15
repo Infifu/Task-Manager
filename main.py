@@ -2,27 +2,43 @@ from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.templating import Jinja2Templates
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from pydantic import BaseModel, ConfigDict, Field
+import tools
+from datetime import datetime
 
 
 app = FastAPI()
 
 templates = Jinja2Templates(directory="templates")
 
-tasks: list[dict] = [
-    {
-        "id": 1,
-        "title": "clean the house",
-        "content": "do a deep cleaning",
-        "date": "July 15, 2026",
-        "status": "In Progress"
-    },
-    {
-        "id": 2,
-        "title": "wash the dishes",
-        "content": "wash the pam",
-        "date": "July 15, 2026",
-        "status": "In Progress"
-    },
+
+# Pydantic creates init for the class
+class Task(BaseModel):
+    id: int = Field(gt=0)
+    title: str = Field(min_length=1, max_length=100)
+    content: str = Field(min_length=1, max_length=1000)
+    date: str
+    status: str
+
+
+class RequestTask(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+    content: str = Field(min_length=1, max_length=100)
+
+
+id_count = 2
+
+tasks: list[Task] = [
+    Task(id=1,
+         title="Clean the house",
+         content="do a deep cleaning",
+         date="July 15, 2026",
+         status="In Progress"),
+    Task(id=2,
+         title="Wash the dishes",
+         content="Wash the pan",
+         date="July 15, 2026",
+         status="In Progress")
 ]
 
 
@@ -32,17 +48,30 @@ def home(request: Request):
         request=request,
         name="home.html",
         context={
-            "request": request,
             "tasks": tasks,
         }
     )
 
 
 @app.get("/tasks/{task_id}")
+def read_task(task_id: int, request: Request):
+    for task in tasks:
+        if task.id == task_id:
+            return templates.TemplateResponse(
+                request=request,
+                name="task.html",
+                context={
+                    "task": task,
+                }
+            )
+    raise HTTPException(status_code=404, detail="Task not found")
+
+
+@app.get("/api/tasks/{task_id}")
 def read_task(task_id: int):
     for task in tasks:
-        if task["id"] == task_id:
-            return {"title": task["title"], "content": task["content"]}
+        if task.id == task_id:
+            return {"title": task.title, "content": task.content}
     raise HTTPException(status_code=404, detail="Task not found")
 
 
@@ -73,3 +102,19 @@ def validation_exception_handler(request: Request, exception: RequestValidationE
             "error": error
         }
     )
+
+
+@app.post("/api/tasks", response_model=Task)
+def create_task(task: RequestTask):
+    global id_count
+    id_count += 1
+    newTask = Task(
+        id=id_count,
+        title=task.title,
+        content=task.content,
+        date=tools.format_date(datetime.now()),
+        status="To Do"
+    )
+
+    tasks.append(newTask)
+    return newTask
