@@ -1,5 +1,8 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.templating import Jinja2Templates
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
 
 app = FastAPI()
 
@@ -31,5 +34,42 @@ def home(request: Request):
         context={
             "request": request,
             "tasks": tasks,
+        }
+    )
+
+
+@app.get("/tasks/{task_id}")
+def read_task(task_id: int):
+    for task in tasks:
+        if task["id"] == task_id:
+            return {"title": task["title"], "content": task["content"]}
+    raise HTTPException(status_code=404, detail="Task not found")
+
+
+@app.exception_handler(StarletteHTTPException)
+def general_http_exception_handler(request: Request, exception: StarletteHTTPException):
+    return templates.TemplateResponse(
+        request=request,
+        name="error.html",
+        context={
+            "request": request,
+            "error": exception
+        }
+    )
+
+
+@app.exception_handler(RequestValidationError)
+def validation_exception_handler(request: Request, exception: RequestValidationError):
+    error = {
+        "status_code": status.HTTP_422_UNPROCESSABLE_CONTENT,
+        "detail": exception.errors()[0]["msg"]
+    }
+    print(error)
+    return templates.TemplateResponse(
+        request=request,
+        name="error.html",
+        context={
+            "request": request,
+            "error": error
         }
     )
