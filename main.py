@@ -6,15 +6,13 @@ from starlette.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 from typing import Annotated
-
 import database
 from database import get_db
-
 import tools
-import models
+from models import *
 from datetime import datetime
 
-models.Base.metadata.create_all(bind=database.engine)
+Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI()
 
@@ -22,12 +20,16 @@ templates = Jinja2Templates(directory="templates")
 
 
 # Pydantic creates init for the class
-class Task(BaseModel):
+class ResponseTask(BaseModel):
     id: int = Field(gt=0)
     title: str = Field(min_length=1, max_length=100)
     content: str = Field(min_length=1, max_length=1000)
-    date: str
+    date_created: datetime
     status: str
+
+    model_config = {
+        "from_attributes": True
+    }
 
 
 class RequestTask(BaseModel):
@@ -37,23 +39,10 @@ class RequestTask(BaseModel):
 
 id_count = 2
 
-tasks: list[Task] = [
-    Task(id=1,
-         title="Clean the house",
-         content="do a deep cleaning",
-         date="July 15, 2026",
-         status="In Progress"),
-    Task(id=2,
-         title="Wash the dishes",
-         content="Wash the pan",
-         date="July 15, 2026",
-         status="In Progress")
-]
-
 
 @app.get("/")
 def home(request: Request, db: Annotated[Session, Depends(get_db)]):
-    taskss = db.query(models.Tasks).all()
+    tasks = db.query(Tasks).all()
     print(tasks)
     return templates.TemplateResponse(
         request=request,
@@ -65,25 +54,25 @@ def home(request: Request, db: Annotated[Session, Depends(get_db)]):
 
 
 @app.get("/tasks/{task_id}")
-def read_task(task_id: int, request: Request):
-    for task in tasks:
-        if task.id == task_id:
-            return templates.TemplateResponse(
-                request=request,
-                name="task.html",
-                context={
-                    "task": task,
-                }
-            )
-    raise HTTPException(status_code=404, detail="Task not found")
+def read_task(task_id: int, request: Request, db: Annotated[Session, Depends(get_db)]):
+    task = db.get(Tasks, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return templates.TemplateResponse(
+        request=request,
+        name="task.html",
+        context={
+            "task": task,
+        }
+    )
 
 
-@app.get("/api/tasks/{task_id}")
-def read_task(task_id: int):
-    for task in tasks:
-        if task.id == task_id:
-            return {"title": task.title, "content": task.content}
-    raise HTTPException(status_code=404, detail="Task not found")
+@app.get("/api/tasks/{task_id}",response_model=ResponseTask)
+def read_task(task_id: int, db: Annotated[Session, Depends(get_db)]):
+    task = db.get(Tasks, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -120,26 +109,26 @@ def validation_exception_handler(request: Request, exception: RequestValidationE
     )
 
 
-@app.post("/api/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
-def create_task(task: RequestTask):
-    global id_count
-    id_count += 1
-    newTask = Task(
-        id=id_count,
+@app.post("/api/tasks", response_model=ResponseTask, status_code=status.HTTP_201_CREATED)
+def create_task(task: RequestTask, db: Annotated[Session, Depends(get_db)]):
+    newTask = Tasks(
         title=task.title,
         content=task.content,
-        date=tools.format_date(datetime.now()),
+        date_created=datetime.now(UTC),
+        user_id=1,
         status="To Do"
     )
-
-    tasks.append(newTask)
+    db.add(newTask)
+    db.commit()
+    db.refresh(newTask)
+    print(task)
     return newTask
 
 
 @app.delete("/api/{task_id]", status_code=status.HTTP_200_OK)
-def delete_task(task_id: int):
-    for task in tasks:
-        if task.id == task_id:
-            tasks.remove(task)
-            return {"content": "task deleted"}
-    raise HTTPException(status_code=404, detail="Task not found")
+def delete_task(task_id: int, db: Annotated[Session, Depends(get_db)]):
+    task = db.get(Tasks, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    db.delete(task)
+    db.commit()

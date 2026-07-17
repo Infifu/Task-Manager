@@ -54,7 +54,7 @@
             <h1>{{ task.title }}</h1>
 
             <div class="date">
-                {{ task.date }}
+                {{ task.date_created.strftime("%d %B %Y") }}
             </div>
 
             <div class="content">

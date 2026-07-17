@@ -32,7 +32,7 @@ class Tasks(Base):
         nullable=False
     )
 
-    date_posted: Mapped[datetime] = mapped_column(
+    date_created: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC)
     )
