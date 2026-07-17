@@ -3,6 +3,8 @@ from fastapi.templating import Jinja2Templates
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from starlette.responses import JSONResponse
+
 import tools
 from datetime import datetime
 
@@ -77,6 +79,11 @@ def read_task(task_id: int):
 
 @app.exception_handler(StarletteHTTPException)
 def general_http_exception_handler(request: Request, exception: StarletteHTTPException):
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(
+            status_code=exception.status_code,
+            content={"status_code": exception.status_code, "detail": exception.detail},
+        )
     return templates.TemplateResponse(
         request=request,
         name="error.html",
@@ -104,7 +111,7 @@ def validation_exception_handler(request: Request, exception: RequestValidationE
     )
 
 
-@app.post("/api/tasks", response_model=Task)
+@app.post("/api/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(task: RequestTask):
     global id_count
     id_count += 1
@@ -118,3 +125,12 @@ def create_task(task: RequestTask):
 
     tasks.append(newTask)
     return newTask
+
+
+@app.delete("/api/{task_id]", status_code=status.HTTP_200_OK)
+def delete_task(task_id: int):
+    for task in tasks:
+        if task.id == task_id:
+            tasks.remove(task)
+            return {"content": "task deleted"}
+    raise HTTPException(status_code=404, detail="Task not found")
