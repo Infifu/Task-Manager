@@ -1,13 +1,20 @@
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session
+from typing import Annotated
+
+import database
+from database import get_db
 
 import tools
+import models
 from datetime import datetime
 
+models.Base.metadata.create_all(bind=database.engine)
 
 app = FastAPI()
 
@@ -45,7 +52,9 @@ tasks: list[Task] = [
 
 
 @app.get("/")
-def home(request: Request):
+def home(request: Request, db: Annotated[Session, Depends(get_db)]):
+    taskss = db.query(models.Tasks).all()
+    print(tasks)
     return templates.TemplateResponse(
         request=request,
         name="home.html",
